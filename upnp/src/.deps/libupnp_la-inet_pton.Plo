@@ -1,0 +1,3 @@
+src/libupnp_la-inet_pton.lo: src/inet_pton.c /usr/include/stdc-predef.h
+
+/usr/include/stdc-predef.h:
