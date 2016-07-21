@@ -11,8 +11,10 @@
 #define __DEBUG__ 1
 #if __DEBUG__
 #define DEBUG(format,...) printf(">>FILE: %s, LINE: %d: "format"\n", __FILE__, __LINE__, ##__VA_ARGS__)
+#define DEBUG_PRINTF(format,...) printf(format, ##__VA_ARGS__)
 #else
 #define DEBUG(format,...)
+#define DEBUG_PRINTF(format,...)
 #endif
 
 const char DeviceType[] = "urn:schemas-upnp-org:device:MediaRenderer:1";
@@ -102,11 +104,38 @@ int CtrlPointCallbackEventHandler(Upnp_EventType EventType, void *Event, void *C
 		case UPNP_DISCOVERY_ADVERTISEMENT_ALIVE:
 		case UPNP_DISCOVERY_SEARCH_RESULT: 
 			{
+				struct Upnp_Discovery *d_event = (struct Upnp_Discovery *)Event;
+				IXML_Document *DescDoc = NULL;
+				int ret;
+
+				if (d_event->ErrCode != UPNP_E_SUCCESS)
+				{
+					DEBUG("Error in Discovery Callback -- %d\n", d_event->ErrCode);
+				}
+				ret = UpnpDownloadXmlDoc(d_event->Location, &DescDoc);
+				if (ret != UPNP_E_SUCCESS) 
+				{
+					DEBUG("Error obtaining device description"
+							" from %s -- error = %d\n",
+							d_event->Location, ret);
+				}
+				else
+				{
+					CtrlPointAddDevice(DescDoc, d_event->Location, d_event->Expires);
+				}
+				if (DescDoc)
+				{
+					ixmlDocument_free(DescDoc);
+				}
+				CtrlPointPrintList();
+				break;
+			}
+			{
 #if 0
 				pthread_mutex_lock(&DeviceListMutex);
 				printf("\n\n\n\nLINE: %d search result\n", __LINE__);
 				struct Upnp_Discovery *d_event = (struct Upnp_Discovery *)Event;
-				
+
 				if (d_event->ErrCode != UPNP_E_SUCCESS)
 				{
 					printf("Error in Discovery Callback -- %d\n", d_event->ErrCode);
@@ -491,4 +520,45 @@ int CtrlPointGetDevice(int devnum, struct DeviceNode **devnode)
 	*devnode = tmpdevnode;
 
 	return SUCCESS;
+}
+
+/********************************************************************************
+ * TvCtrlPointPrintList
+ * Description: 
+ *       Print the universal device names for each device in the global device list
+ * Parameters:
+ *   None
+ ********************************************************************************/
+int CtrlPointPrintList(void)
+{
+	struct DeviceNode *tmpdevnode;
+	int i = 0;
+
+	pthread_mutex_lock(&DeviceListMutex);
+	DEBUG_PRINTF("TvCtrlPointPrintList:\n");
+	tmpdevnode = GlobalDeviceList;
+	while (tmpdevnode)
+	{
+		DEBUG_PRINTF("%3d -- %s\n", ++i, tmpdevnode->device.UDN);
+		tmpdevnode = tmpdevnode->next;
+	}
+	DEBUG_PRINTF("\n");
+	pthread_mutex_unlock(&DeviceListMutex);
+
+	return SUCCESS;
+}
+
+/********************************************************************************
+ * TvCtrlPointAddDevice
+ * Description: 
+ *       If the device is not already included in the global device list,
+ *       add it.  Otherwise, update its advertisement expiration timeout.
+ * Parameters:
+ *   DescDoc -- The description document for the device
+ *   location -- The location of the description document URL
+ *   expires -- The expiration time for this advertisement
+ ********************************************************************************/
+void CtrlPointAddDevice( IXML_Document *DescDoc, const char *location, int expires)
+{
+
 }

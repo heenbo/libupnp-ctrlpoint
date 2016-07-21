@@ -60,6 +60,7 @@ extern int CtrlPointProcessCommand(char *cmdline);
 extern int CtrlPointSendAction( int service, int devnum, const char *actionname, 
 				const char **param_name, char **param_val, int param_count);
 extern int CtrlPointGetDevice(int devnum, struct DeviceNode **devnode);
-
+extern int CtrlPointPrintList(void);
+extern void CtrlPointAddDevice( IXML_Document *DescDoc, const char *location, int expires);
 
 #endif //__CTRLPOINTSTART_H_
