@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <pthread.h>
 #include <upnp.h>
@@ -14,10 +15,31 @@
 
 const char DeviceType[] = "urn:schemas-upnp-org:device:MediaRenderer:1";
 const char *ServiceName[] = { "AVTransport", "ConnectionManager:1", "RenderingControl"};
+
+const char *VarName[SERVICE_SERVCOUNT][MAXVARS] = 
+{
+	{
+		"TransportStatus", "NextAVTransportURI", "NextAVTransportURIMetaData", "CurrentTrackMetaData"
+	},
+	{
+		"A_ARG_TYPE_ConnectionManager", "SinkProtocolInfo", "A_ARG_TYPE_ConnectionStatus", "A_ARG_TYPE_AVTransportID"
+	},
+	{
+		"GreenVideoGain", "BlueVideoBlackLevel", "VerticalKeystone", "GreenVideoBlackLevel"
+	},
+};
+char VarCount[SERVICE_SERVCOUNT] = 
+{ 
+	AVTRANSPORT_VARCOUNT, CONNECTIONMANAGER_VARCOUNT, RENDERINGCONTROL_VARCOUNT,
+};
+
+//The first node in the global device list, or NULL if empty
+struct DeviceNode *GlobalDeviceList = NULL;
 int default_timeout = 1801;
 
 pthread_mutex_t DeviceListMutex;
 UpnpClient_Handle ctrlpt_handle = -1;
+static int CtrlPointTimerLoopRun = 1;
 
 int CtrlPointStart(void)
 {
@@ -157,36 +179,157 @@ int CtrlPointCallbackEventHandler(Upnp_EventType EventType, void *Event, void *C
 
 int CtrlPointRefresh(void)
 {
-#if 0
 	int rc;
-
-	TvCtrlPointRemoveAll();
+	CtrlPointRemoveAll();
 	/* Search for all devices of type tvdevice version 1,
 	 * waiting for up to 5 seconds for the response */
 	rc = UpnpSearchAsync(ctrlpt_handle, 5, DeviceType, NULL);
 	if (UPNP_E_SUCCESS != rc) 
 	{
-		SampleUtil_Print("Error sending search request%d\n", rc);
-
+		DEBUG("Error sending search request%d\n", rc);
 		return ERROR;
 	}
-#endif
+	return SUCCESS;
+}
+
+int CtrlPointRemoveAll(void)
+{
+	struct DeviceNode *curdevnode, *next;
+
+	pthread_mutex_lock(&DeviceListMutex);
+	curdevnode = GlobalDeviceList;
+	GlobalDeviceList = NULL;
+	while (curdevnode)
+	{
+		next = curdevnode->next;
+		CtrlPointDeleteNode(curdevnode);
+		curdevnode = next;
+	}
+	pthread_mutex_unlock(&DeviceListMutex);
+
+	return SUCCESS;
+}
+
+/********************************************************************************
+ * TvCtrlPointDeleteNode
+ * Description: 
+ *       Delete a device node from the global device list.  Note that this
+ *       function is NOT thread safe, and should be called from another
+ *       function that has already locked the global device list.
+ * Parameters:
+ *   node -- The device node
+ ********************************************************************************/
+int CtrlPointDeleteNode(struct DeviceNode *node)
+{
+	int rc, service, var;
+
+	if (NULL == node)
+	{
+		DEBUG("ERROR: CtrlPointDeleteNode: Node is empty\n");
+		return ERROR;
+	}
+
+	for (service = 0; service < SERVICE_SERVCOUNT; service++)
+	{
+		//If we have a valid control SID, then unsubscribe 
+		if (strcmp(node->device.Service[service].SID, "") != 0)
+		{
+			rc = UpnpUnSubscribe(ctrlpt_handle, node->device.Service[service].SID);
+			if (UPNP_E_SUCCESS == rc) 
+			{
+				    DEBUG("Unsubscribed from Tv %s EventURL with SID=%s\n",
+				     ServiceName[service],
+				     node->device.Service[service].SID);
+			} else 
+			{
+				    DEBUG("Error unsubscribing to Tv %s EventURL -- %d\n",
+				     ServiceName[service], rc);
+			}
+		}
+		for (var = 0; var < VarCount[service]; var++) 
+		{
+			if (node->device.Service[service].VariableStrVal[var]) 
+			{
+				free(node->device.Service[service].VariableStrVal[var]);
+			}
+		}
+	}
+	/*Notify New Device Added , do not need*/
+//	SampleUtil_StateUpdate(NULL, NULL, node->device.UDN, DEVICE_REMOVED);
+	free(node);
+	node = NULL;
+
 	return SUCCESS;
 }
 
 void *CtrlPointTimerLoop(void *args)
 {
-#if 0
 	/* how often to verify the timeouts, in seconds */
 	int incr = 30;
 
 	while (CtrlPointTimerLoopRun) 
 	{
 		sleep((unsigned int)incr);
-//		TvCtrlPointVerifyTimeouts(incr);
+		CtrlPointVerifyTimeouts(incr);
 	}
 
-#endif
 	return NULL;
+}
+
+void CtrlPointVerifyTimeouts(int incr)
+{
+	struct DeviceNode *prevdevnode;
+	struct DeviceNode *curdevnode;
+	int ret;
+
+	pthread_mutex_lock(&DeviceListMutex);
+	prevdevnode = NULL;
+	curdevnode = GlobalDeviceList;
+	while (curdevnode) 
+	{
+		curdevnode->device.AdvrTimeOut -= incr;
+		if (curdevnode->device.AdvrTimeOut <= 0)
+		{
+			/* This advertisement has expired, so we should remove the device
+			 * from the list */
+			if (GlobalDeviceList == curdevnode)
+			{
+				GlobalDeviceList = curdevnode->next;
+			}
+			else
+			{
+				prevdevnode->next = curdevnode->next;
+			}
+			CtrlPointDeleteNode(curdevnode);
+			if (prevdevnode)
+			{
+				curdevnode = prevdevnode->next;
+			}
+			else
+			{
+				curdevnode = GlobalDeviceList;
+			}
+		}
+		else
+		{
+			if (curdevnode->device.AdvrTimeOut < 2 * incr) 
+			{
+				/* This advertisement is about to expire, so
+				 * send out a search request for this device
+				 * UDN to try to renew */
+				ret = UpnpSearchAsync(ctrlpt_handle, incr,
+						      curdevnode->device.UDN,
+						      NULL);
+				if (ret != UPNP_E_SUCCESS)
+				{
+					DEBUG("Error sending search request for Device UDN: %s -- err = %d\n", curdevnode->device.UDN, ret);
+				}
+			}
+			prevdevnode = curdevnode;
+			curdevnode = curdevnode->next;
+		}
+	}
+
+	pthread_mutex_unlock(&DeviceListMutex);
 }
 
