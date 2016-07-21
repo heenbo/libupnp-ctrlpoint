@@ -8,12 +8,15 @@
 #include "main.h"
 #include "ctrlpoint.h"
 
-#define __DEBUG__ 1
 #if __DEBUG__
 #define DEBUG(format,...) printf(">>FILE: %s, LINE: %d: "format"\n", __FILE__, __LINE__, ##__VA_ARGS__)
-#define DEBUG_PRINTF(format,...) printf(format, ##__VA_ARGS__)
 #else
 #define DEBUG(format,...)
+#endif
+
+#if __DEBUG_PRINTF__
+#define DEBUG_PRINTF(format,...) printf(format, ##__VA_ARGS__)
+#else
 #define DEBUG_PRINTF(format,...)
 #endif
 
@@ -127,7 +130,9 @@ int CtrlPointCallbackEventHandler(Upnp_EventType EventType, void *Event, void *C
 				{
 					ixmlDocument_free(DescDoc);
 				}
+#if __DEBUG__
 				CtrlPointPrintList();
+#endif
 				break;
 			}
 			{
@@ -171,44 +176,44 @@ int CtrlPointCallbackEventHandler(Upnp_EventType EventType, void *Event, void *C
 			}
 		case UPNP_DISCOVERY_SEARCH_TIMEOUT:
 			{
-				printf("LINE: %d search_timeout\n", __LINE__);
+				DEBUG("search_timeout\n");
 			/* Nothing to do here... */
 			}
 			break;
 		case UPNP_DISCOVERY_ADVERTISEMENT_BYEBYE: 
 			{
-				printf("LINE: %d bye bye!!!\n", __LINE__);
+				DEBUG("bye bye!!!\n");
 			}
 			/* SOAP Stuff */
 		case UPNP_CONTROL_ACTION_COMPLETE: 
 			{
-				printf("LINE: %d action complete\n", __LINE__);
+				DEBUG("action complete\n");
 			}
 		case UPNP_CONTROL_GET_VAR_COMPLETE: 
 			{
-				printf("LINE: %d get var complete\n", __LINE__);
+				DEBUG("get var complete\n");
 			}
 			/* GENA Stuff */
 		case UPNP_EVENT_RECEIVED: 
 			{
-				printf("LINE: %d received\n", __LINE__);
+				DEBUG("received\n");
 			}
 		case UPNP_EVENT_SUBSCRIBE_COMPLETE:
 		case UPNP_EVENT_UNSUBSCRIBE_COMPLETE:
 		case UPNP_EVENT_RENEWAL_COMPLETE: 
 			{
-				printf("LINE: %d sub complete, unsub complete, renewal complete\n", __LINE__);
+				DEBUG("sub complete, unsub complete, renewal complete\n");
 			}
 		case UPNP_EVENT_AUTORENEWAL_FAILED:
 		case UPNP_EVENT_SUBSCRIPTION_EXPIRED: 
 			{
-				printf("LINE: %d autorenewal failed, sub expired\n", __LINE__);
+				DEBUG("autorenewal failed, sub expired\n");
 			}
 			/* ignore these cases, since this is not a device */
 		case UPNP_EVENT_SUBSCRIPTION_REQUEST:
 		case UPNP_CONTROL_GET_VAR_REQUEST:
 		case UPNP_CONTROL_ACTION_REQUEST:
-				printf("LINE: %d event sub req, control get var req, control action req\n", __LINE__);
+				DEBUG("event sub req, control get var req, control action req\n");
 			break;	
 
 	}
@@ -411,6 +416,10 @@ int CtrlPointProcessCommand(char *cmdline)
 	{
 		CtrlPointSendAction(SERVICE_AVTRANSPORT, arg1,  "Pause", NULL,        NULL, 0);
 	}
+	else if(0 == strcmp(cmd, "stop"))
+	{
+		CtrlPointSendAction(SERVICE_AVTRANSPORT, arg1,  "Stop", NULL,        NULL, 0);
+	}
 	else if(0 == strcmp(cmd, "send"))
 	{
 		char * action = "SetAVTransportURI";
@@ -418,6 +427,10 @@ int CtrlPointProcessCommand(char *cmdline)
 		char * argm_val[] = {"0", "http://o9o6wy2tb.bkt.clouddn.com/need_for_speed.mp4", "11"};
 
 		CtrlPointSendAction(SERVICE_AVTRANSPORT, arg1,  action, argm, argm_val, 3);
+	}
+	else if(0 == strcmp(cmd, "ls"))
+	{
+		CtrlPointPrintList();
 	}
 	else
 	{
@@ -532,10 +545,12 @@ int CtrlPointGetDevice(int devnum, struct DeviceNode **devnode)
 int CtrlPointPrintList(void)
 {
 	struct DeviceNode *tmpdevnode;
+#if __DEBUG_PRINTF__
 	int i = 0;
+#endif
 
 	pthread_mutex_lock(&DeviceListMutex);
-	DEBUG_PRINTF("TvCtrlPointPrintList:\n");
+	DEBUG_PRINTF("CtrlPointPrintList:\n");
 	tmpdevnode = GlobalDeviceList;
 	while (tmpdevnode)
 	{
@@ -561,4 +576,340 @@ int CtrlPointPrintList(void)
 void CtrlPointAddDevice( IXML_Document *DescDoc, const char *location, int expires)
 {
 
+	char *deviceType = NULL;
+	char *friendlyName = NULL;
+	char presURL[200];
+	char *baseURL = NULL;
+	char *relURL = NULL;
+	char *UDN = NULL;
+	char *serviceId[SERVICE_SERVCOUNT] = { NULL, NULL, NULL };
+	char *eventURL[SERVICE_SERVCOUNT] = { NULL, NULL, NULL };
+	char *controlURL[SERVICE_SERVCOUNT] = { NULL, NULL, NULL };
+	Upnp_SID eventSID[SERVICE_SERVCOUNT];
+	int TimeOut[SERVICE_SERVCOUNT] = { default_timeout, default_timeout, default_timeout, };
+	struct DeviceNode *deviceNode;
+	struct DeviceNode *tmpdevnode;
+	int ret = 1;
+	int found = 0;
+	int service;
+	int var;
+
+	pthread_mutex_lock(&DeviceListMutex);
+	/* Read key elements from description document */
+	UDN = SampleUtil_GetFirstDocumentItem(DescDoc, "UDN");
+	deviceType = SampleUtil_GetFirstDocumentItem(DescDoc, "deviceType");
+	friendlyName = SampleUtil_GetFirstDocumentItem(DescDoc, "friendlyName");
+	baseURL = SampleUtil_GetFirstDocumentItem(DescDoc, "URLBase");
+	relURL = SampleUtil_GetFirstDocumentItem(DescDoc, "presentationURL");
+
+	ret = UpnpResolveURL((baseURL ? baseURL : location), relURL, presURL);
+	if (UPNP_E_SUCCESS != ret)
+	{
+		DEBUG("Error generating presURL from %s + %s\n", baseURL, relURL);
+	}
+
+	if (strcmp(deviceType, DeviceType) == 0)
+	{
+		DEBUG("Found Tv device\n");
+		/* Check if this device is already in the list */
+		tmpdevnode = GlobalDeviceList;
+		while (tmpdevnode)
+		{
+			if (strcmp(tmpdevnode->device.UDN, UDN) == 0)
+			{
+				found = 1;
+				break;
+			}
+			tmpdevnode = tmpdevnode->next;
+		}
+
+		if (found)
+		{
+			/* The device is already there, so just update  */
+			/* the advertisement timeout field */
+			tmpdevnode->device.AdvrTimeOut = expires;
+		}
+		else	
+		{
+			for (service = 0; service < SERVICE_SERVCOUNT; service++)
+			{
+				if (SampleUtil_FindAndParseService (DescDoc, location,
+						ServiceType[service], &serviceId[service],
+						&eventURL[service], &controlURL[service]))
+				{
+					DEBUG("Subscribing to EventURL %s...\n", eventURL[service]);
+					ret = UpnpSubscribe(ctrlpt_handle, eventURL[service],
+							&TimeOut[service], eventSID[service]);
+					if (ret == UPNP_E_SUCCESS)
+					{
+						DEBUG("Subscribed to EventURL with SID=%s\n",
+								eventSID[service]);
+					}
+					else
+					{
+						DEBUG("Error Subscribing to EventURL -- %d\n", ret);
+						strcpy(eventSID[service], "");
+					}
+				}
+				else
+				{
+					DEBUG("Error: Could not find Service: %s\n",
+						 ServiceType[service]);
+				}
+			}
+			/* Create a new device node */
+			deviceNode = (struct DeviceNode *) malloc(sizeof(struct DeviceNode));
+			strcpy(deviceNode->device.UDN, UDN);
+			strcpy(deviceNode->device.DescDocURL, location);
+			strcpy(deviceNode->device.FriendlyName, friendlyName);
+			strcpy(deviceNode->device.PresURL, presURL);
+			deviceNode->device.AdvrTimeOut = expires;
+			for (service = 0; service < SERVICE_SERVCOUNT; service++)
+			{
+				if (serviceId[service] == NULL)
+				{
+					/* not found */
+					continue;
+				}
+				strcpy(deviceNode->device.Service[service].ServiceId,
+						serviceId[service]);
+				strcpy(deviceNode->device.Service[service].ServiceType,
+						ServiceType[service]);
+				strcpy(deviceNode->device.Service[service].ControlURL,
+						controlURL[service]);
+				strcpy(deviceNode->device.Service[service].EventURL, 
+						eventURL[service]);
+				strcpy(deviceNode->device.Service[service].SID,
+						eventSID[service]);
+				for (var = 0; var < VarCount[service]; var++)
+				{
+					deviceNode->device.Service[service].VariableStrVal[var] =
+						(char *)malloc(MAX_VAL_LEN);
+					strcpy(deviceNode->device.Service[service].VariableStrVal[var], 
+							"");
+				}
+			}
+			deviceNode->next = NULL;
+			/* Insert the new device node in the list */
+			if ((tmpdevnode = GlobalDeviceList))
+			{
+				while (tmpdevnode)
+				{
+					if (tmpdevnode->next)
+					{
+						tmpdevnode = tmpdevnode->next;
+					}
+					else
+					{
+						tmpdevnode->next = deviceNode;
+						break;
+					}
+				}
+			}
+			else
+			{
+				GlobalDeviceList = deviceNode;
+			}
+			/*Notify New Device Added */
+//			SampleUtil_StateUpdate(NULL, NULL, deviceNode->device.UDN, DEVICE_ADDED);
+		}
+	}
+	pthread_mutex_unlock(&DeviceListMutex);
+
+	if (deviceType)
+		free(deviceType);
+	if (friendlyName)
+		free(friendlyName);
+	if (UDN)
+		free(UDN);
+	if (baseURL)
+		free(baseURL);
+	if (relURL)
+		free(relURL);
+	for (service = 0; service < SERVICE_SERVCOUNT; service++)
+	{
+		if (serviceId[service])
+			free(serviceId[service]);
+		if (controlURL[service])
+			free(controlURL[service]);
+		if (eventURL[service])
+			free(eventURL[service]);
+	}
+}
+
+char *SampleUtil_GetFirstDocumentItem(IXML_Document *doc, const char *item)
+{
+	IXML_NodeList *nodeList = NULL;
+	IXML_Node *textNode = NULL;
+	IXML_Node *tmpNode = NULL;
+	char *ret = NULL;
+
+	nodeList = ixmlDocument_getElementsByTagName(doc, (char *)item);
+	if (nodeList)
+	{
+		tmpNode = ixmlNodeList_item(nodeList, 0);
+		if (tmpNode)
+		{
+			textNode = ixmlNode_getFirstChild(tmpNode);
+			if (!textNode)
+			{
+				DEBUG("%s(%d): (BUG) ixmlNode_getFirstChild(tmpNode) returned NULL\n",
+						__FILE__, __LINE__); 
+				ret = strdup("");
+				goto epilogue;
+			}
+			ret = strdup(ixmlNode_getNodeValue(textNode));
+			if (!ret)
+			{
+				DEBUG("%s(%d): ixmlNode_getNodeValue returned NULL\n",
+						__FILE__, __LINE__); 
+				ret = strdup("");
+			}
+		} 
+		else
+		{
+			DEBUG("%s(%d): ixmlNodeList_item(nodeList, 0) returned NULL\n",
+					__FILE__, __LINE__);
+		}
+	} else
+		DEBUG("%s(%d): Error finding %s in XML Node\n",
+			__FILE__, __LINE__, item);
+
+epilogue:
+	if (nodeList)
+	{
+		ixmlNodeList_free(nodeList);
+	}
+	return ret;
+}
+
+int SampleUtil_FindAndParseService(IXML_Document *DescDoc, const char *location,
+	const char *serviceType, char **serviceId, char **eventURL, char **controlURL)
+{
+	unsigned int i;
+	unsigned long length;
+	int found = 0;
+	int ret;
+	char *tempServiceType = NULL;
+	char *baseURL = NULL;
+	const char *base = NULL;
+	char *relcontrolURL = NULL;
+	char *releventURL = NULL;
+	IXML_NodeList *serviceList = NULL;
+	IXML_Element *service = NULL;
+
+	baseURL = SampleUtil_GetFirstDocumentItem(DescDoc, "URLBase");
+	if (baseURL)
+	{
+		base = baseURL;
+	}
+	else
+	{
+		base = location;
+	}
+	serviceList = SampleUtil_GetFirstServiceList(DescDoc);
+	length = ixmlNodeList_length(serviceList);
+	for (i = 0; i < length; i++)
+	{
+		service = (IXML_Element *)ixmlNodeList_item(serviceList, i);
+		tempServiceType = SampleUtil_GetFirstElementItem((IXML_Element *)service,"serviceType");
+		if (tempServiceType && strcmp(tempServiceType, serviceType) == 0)
+		{
+			DEBUG("Found service: %s\n", serviceType);
+			*serviceId = SampleUtil_GetFirstElementItem(service, "serviceId");
+			DEBUG("serviceId: %s\n", *serviceId);
+			relcontrolURL = SampleUtil_GetFirstElementItem(service, "controlURL");
+			releventURL = SampleUtil_GetFirstElementItem(service, "eventSubURL");
+			*controlURL = malloc(strlen(base) + strlen(relcontrolURL) + 1);
+			if (*controlURL)
+			{
+				ret = UpnpResolveURL(base, relcontrolURL, *controlURL);
+				if (ret != UPNP_E_SUCCESS)
+				{
+					DEBUG("Error generating controlURL from %s + %s\n",
+							base, relcontrolURL);
+				}
+			}
+			*eventURL = malloc(strlen(base) + strlen(releventURL) + 1);
+			if (*eventURL)
+			{
+				ret = UpnpResolveURL(base, releventURL, *eventURL);
+				if (ret != UPNP_E_SUCCESS)
+				{
+					DEBUG("Error generating eventURL from %s + %s\n",
+							base, releventURL);
+				}
+			}
+			free(relcontrolURL);
+			free(releventURL);
+			relcontrolURL = NULL;
+			releventURL = NULL;
+			found = 1;
+			break;
+		}
+		free(tempServiceType);
+		tempServiceType = NULL;
+	}
+	free(tempServiceType);
+	tempServiceType = NULL;
+	if (serviceList)
+		ixmlNodeList_free(serviceList);
+	serviceList = NULL;
+	free(baseURL);
+
+	return found;
+}
+
+IXML_NodeList *SampleUtil_GetFirstServiceList(IXML_Document *doc)
+{
+	IXML_NodeList *ServiceList = NULL;
+	IXML_NodeList *servlistnodelist = NULL;
+	IXML_Node *servlistnode = NULL;
+
+	servlistnodelist = ixmlDocument_getElementsByTagName(doc, "serviceList");
+	if (servlistnodelist && ixmlNodeList_length(servlistnodelist))
+	{
+		/* we only care about the first service list, from the root device */
+		servlistnode = ixmlNodeList_item(servlistnodelist, 0);
+		/* create as list of DOM nodes */
+		ServiceList = ixmlElement_getElementsByTagName((IXML_Element *)servlistnode, "service");
+	}
+	if (servlistnodelist)
+	{
+		ixmlNodeList_free(servlistnodelist);
+	}
+	return ServiceList;
+}
+
+char *SampleUtil_GetFirstElementItem(IXML_Element *element, const char *item)
+{
+	IXML_NodeList *nodeList = NULL;
+	IXML_Node *textNode = NULL;
+	IXML_Node *tmpNode = NULL;
+	char *ret = NULL;
+
+	nodeList = ixmlElement_getElementsByTagName(element, (char *)item);
+	if (nodeList == NULL) 
+	{
+		DEBUG("%s(%d): Error finding %s in XML Node\n", __FILE__, __LINE__, item);
+		return NULL;
+	}
+	tmpNode = ixmlNodeList_item(nodeList, 0);
+	if (!tmpNode)
+	{
+		DEBUG("%s(%d): Error finding %s value in XML Node\n", __FILE__, __LINE__, item);
+		ixmlNodeList_free(nodeList);
+		return NULL;
+	}
+	textNode = ixmlNode_getFirstChild(tmpNode);
+	ret = strdup(ixmlNode_getNodeValue(textNode));
+	if (!ret)
+	{
+		DEBUG("%s(%d): Error allocating memory for %s in XML Node\n", __FILE__, __LINE__, item);
+		ixmlNodeList_free(nodeList);
+		return NULL;
+	}
+	ixmlNodeList_free(nodeList);
+
+	return ret;
 }

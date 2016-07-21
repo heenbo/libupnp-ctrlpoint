@@ -5,7 +5,6 @@
 #include "main.h"
 #include "ctrlpoint.h"
 
-#define __DEBUG__ 1
 #if __DEBUG__
 #define DEBUG(format,...) printf(">>FILE: %s, LINE: %d: "format"\n", __FILE__, __LINE__, ##__VA_ARGS__)
 #else

@@ -12,6 +12,7 @@
 
 /* This should be the maximum VARCOUNT from above */
 #define MAXVARS		AVTRANSPORT_VARCOUNT
+#define MAX_VAL_LEN 5
 
 struct service
 {
@@ -62,5 +63,11 @@ extern int CtrlPointSendAction( int service, int devnum, const char *actionname,
 extern int CtrlPointGetDevice(int devnum, struct DeviceNode **devnode);
 extern int CtrlPointPrintList(void);
 extern void CtrlPointAddDevice( IXML_Document *DescDoc, const char *location, int expires);
+extern char *SampleUtil_GetFirstDocumentItem(IXML_Document *doc, const char *item);
+extern int SampleUtil_FindAndParseService(IXML_Document *DescDoc, const char *location,
+	const char *serviceType, char **serviceId, char **eventURL, char **controlURL);
+extern IXML_NodeList *SampleUtil_GetFirstServiceList(IXML_Document *doc);
+extern char *SampleUtil_GetFirstElementItem(IXML_Element *element, const char *item);
+
 
 #endif //__CTRLPOINTSTART_H_
