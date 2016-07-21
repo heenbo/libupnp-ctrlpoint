@@ -54,5 +54,12 @@ extern void *CtrlPointTimerLoop(void *args);
 extern int CtrlPointDeleteNode(struct DeviceNode *node);
 extern int CtrlPointRemoveAll(void);
 extern void CtrlPointVerifyTimeouts(int incr);
+extern int CtrlPointStop(void);
+extern void *CtrlPointCommandLoop(void *args);
+extern int CtrlPointProcessCommand(char *cmdline);
+extern int CtrlPointSendAction( int service, int devnum, const char *actionname, 
+				const char **param_name, char **param_val, int param_count);
+extern int CtrlPointGetDevice(int devnum, struct DeviceNode **devnode);
+
 
 #endif //__CTRLPOINTSTART_H_

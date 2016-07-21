@@ -3,6 +3,8 @@
 #include <string.h>
 #include <pthread.h>
 #include <upnp.h>
+#include <ixml.h>
+#include <upnptools.h>
 #include "main.h"
 #include "ctrlpoint.h"
 
@@ -15,6 +17,13 @@
 
 const char DeviceType[] = "urn:schemas-upnp-org:device:MediaRenderer:1";
 const char *ServiceName[] = { "AVTransport", "ConnectionManager:1", "RenderingControl"};
+/*! Service types for tv services. */
+const char *ServiceType[] = 
+{
+	"urn:schemas-upnp-org:service:AVTransport:1",
+	"urn:schemas-upnp-org:service:ConnectionManager:1",
+	"urn:schemas-upnp-org:service:RenderingControl:1",
+};
 
 const char *VarName[SERVICE_SERVCOUNT][MAXVARS] = 
 {
@@ -333,3 +342,153 @@ void CtrlPointVerifyTimeouts(int incr)
 	pthread_mutex_unlock(&DeviceListMutex);
 }
 
+int CtrlPointStop(void)
+{
+	CtrlPointTimerLoopRun = 0;
+	CtrlPointRemoveAll();
+	UpnpUnRegisterClient( ctrlpt_handle );
+	UpnpFinish();
+//	SampleUtil_Finish();
+
+	return SUCCESS;
+}
+
+void *CtrlPointCommandLoop(void *args)
+{
+	char cmdline[100];
+
+	while (1) 
+	{
+		printf("\n>> ");
+		fflush(stdout);
+		fgets(cmdline, 100, stdin);
+		CtrlPointProcessCommand(cmdline);
+	}
+
+	return NULL;
+}
+
+int CtrlPointProcessCommand(char *cmdline)
+{
+	char cmd[100];
+	int arg1 = 0;
+	sscanf(cmdline, "%s %d", cmd, &arg1);	
+	
+	if(0 == strcmp(cmd, "play"))
+	{
+		CtrlPointSendAction(SERVICE_AVTRANSPORT, arg1,  "Play", NULL,        NULL, 0);
+	}
+	else if(0 == strcmp(cmd, "pause"))
+	{
+		CtrlPointSendAction(SERVICE_AVTRANSPORT, arg1,  "Pause", NULL,        NULL, 0);
+	}
+	else if(0 == strcmp(cmd, "send"))
+	{
+		char * action = "SetAVTransportURI";
+		const char * argm[] = {"InstanceID", "CurrentURI", "CurrentURIMetaData"};
+		char * argm_val[] = {"0", "http://o9o6wy2tb.bkt.clouddn.com/need_for_speed.mp4", "11"};
+
+		CtrlPointSendAction(SERVICE_AVTRANSPORT, arg1,  action, argm, argm_val, 3);
+	}
+	else
+	{
+		DEBUG("command input error!\n");
+	}
+		
+	return SUCCESS;
+}
+
+/********************************************************************************
+ * TvCtrlPointSendAction
+ * Description: 
+ *       Send an Action request to the specified service of a device.
+ * Parameters:
+ *   service -- The service
+ *   devnum -- The number of the device (order in the list, starting with 1)
+ *   actionname -- The name of the action.
+ *   param_name -- An array of parameter names
+ *   param_val -- The corresponding parameter values
+ *   param_count -- The number of parameters
+ ********************************************************************************/
+int CtrlPointSendAction( int service, int devnum, const char *actionname, 
+				const char **param_name, char **param_val, int param_count)
+{
+	struct DeviceNode *devnode;
+	IXML_Document *actionNode = NULL;
+	int rc = SUCCESS;
+	int param;
+
+	pthread_mutex_lock(&DeviceListMutex);
+
+	rc = CtrlPointGetDevice(devnum, &devnode);
+	if (SUCCESS == rc) 
+	{
+		if (0 == param_count) 
+		{
+			actionNode = UpnpMakeAction(actionname, ServiceType[service], 0, NULL);
+		}
+		else 
+		{
+			for (param = 0; param < param_count; param++)
+			{
+				if (UpnpAddToAction(&actionNode, actionname,
+						ServiceType[service], param_name[param],
+				     		param_val[param]) != UPNP_E_SUCCESS) 
+				{
+					DEBUG("ERROR: TvCtrlPointSendAction: Trying to add action param\n");
+				}
+			}
+		}
+
+		rc = UpnpSendActionAsync(ctrlpt_handle, devnode->device.Service[service].ControlURL,
+						ServiceType[service], NULL, actionNode,
+					 	CtrlPointCallbackEventHandler, NULL);
+
+		if (rc != UPNP_E_SUCCESS)
+		{
+			DEBUG("Error in UpnpSendActionAsync -- %d\n", rc);
+			rc = ERROR;
+		}
+	}
+	pthread_mutex_unlock(&DeviceListMutex);
+	if (actionNode)
+	{
+		ixmlDocument_free(actionNode);
+	}
+	
+	return rc;
+}
+
+/********************************************************************************
+ * TvCtrlPointGetDevice
+ * Description: 
+ *       Given a list number, returns the pointer to the device
+ *       node at that position in the global device list.  Note
+ *       that this function is not thread safe.  It must be called 
+ *       from a function that has locked the global device list.
+ * Parameters:
+ *   devnum -- The number of the device (order in the list, starting with 1)
+ *   devnode -- The output device node pointer
+ ********************************************************************************/
+int CtrlPointGetDevice(int devnum, struct DeviceNode **devnode)
+{
+	int count = devnum;
+	struct DeviceNode *tmpdevnode = NULL;
+
+	if (count)
+	{
+		tmpdevnode = GlobalDeviceList;
+	}
+	while (--count && tmpdevnode)
+	{
+		tmpdevnode = tmpdevnode->next;
+	}
+	if (!tmpdevnode)
+	{
+		DEBUG("Error finding TvDevice number -- %d\n", devnum);
+		return ERROR;
+	}
+	*devnode = tmpdevnode;
+
+	return SUCCESS;
+}
