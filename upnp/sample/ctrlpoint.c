@@ -118,9 +118,8 @@ int CtrlPointCallbackEventHandler(Upnp_EventType EventType, void *Event, void *C
 				ret = UpnpDownloadXmlDoc(d_event->Location, &DescDoc);
 				if (ret != UPNP_E_SUCCESS) 
 				{
-					DEBUG("Error obtaining device description"
-							" from %s -- error = %d\n",
-							d_event->Location, ret);
+					DEBUG("Error obtaining device description from %s -- "
+							"error = %d\n", d_event->Location, ret);
 				}
 				else
 				{
@@ -132,45 +131,6 @@ int CtrlPointCallbackEventHandler(Upnp_EventType EventType, void *Event, void *C
 				}
 #if __DEBUG__
 				CtrlPointPrintList();
-#endif
-				break;
-			}
-			{
-#if 0
-				pthread_mutex_lock(&DeviceListMutex);
-				printf("\n\n\n\nLINE: %d search result\n", __LINE__);
-				struct Upnp_Discovery *d_event = (struct Upnp_Discovery *)Event;
-
-				if (d_event->ErrCode != UPNP_E_SUCCESS)
-				{
-					printf("Error in Discovery Callback -- %d\n", d_event->ErrCode);
-				}
-
-				print_Upnp_Discovery_Info(d_event);
-				IXML_Document *DescDoc = NULL;
-//				UpnpDownloadXmlDoc(d_event->Location, &DescDoc);
-				if(UPNP_E_SUCCESS == UpnpDownloadXmlDoc(d_event->Location, &DescDoc))
-				{	//add device
-						char *UDN = NULL;			
-						char *deviceType = NULL;
-						char *friendlyName = NULL;
-
-						if(0 == strcmp(ctrlpt_DeviceType, SampleUtil_GetFirstDocumentItem(DescDoc, "deviceType")))
-						{
-							/* Read key elements from description document */
-							UDN = SampleUtil_GetFirstDocumentItem(DescDoc, "UDN");
-							deviceType = SampleUtil_GetFirstDocumentItem(DescDoc, "deviceType");
-							friendlyName = SampleUtil_GetFirstDocumentItem(DescDoc, "friendlyName");			
-							printf("\nUDN\t\t: %s\n", UDN);
-							printf("deviceType\t: %s\n", deviceType);
-							printf("friendlyName\t: %s\n", friendlyName);
-						}	
-			}
-				if(DescDoc)
-				{
-					ixmlDocument_free(DescDoc);	
-				} //				char * buf = ixmlPrintDocument(DescDoc); //				printf("buf = %s\n", buf);
-				pthread_mutex_unlock(&DeviceListMutex);
 #endif
 				break;
 			}
@@ -555,6 +515,7 @@ int CtrlPointPrintList(void)
 	while (tmpdevnode)
 	{
 		DEBUG_PRINTF("%3d -- %s\n", ++i, tmpdevnode->device.UDN);
+		DEBUG_PRINTF("%3d -- %s\n", ++i, tmpdevnode->device.FriendlyName);
 		tmpdevnode = tmpdevnode->next;
 	}
 	DEBUG_PRINTF("\n");
