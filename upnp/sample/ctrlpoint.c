@@ -143,6 +143,19 @@ int CtrlPointCallbackEventHandler(Upnp_EventType EventType, void *Event, void *C
 		case UPNP_DISCOVERY_ADVERTISEMENT_BYEBYE: 
 			{
 				DEBUG("bye bye!!!\n");
+				struct Upnp_Discovery *d_event = (struct Upnp_Discovery *)Event;
+				if (d_event->ErrCode != UPNP_E_SUCCESS)
+				{
+					DEBUG("Error in Discovery ByeBye Callback -- %d\n",
+							d_event->ErrCode);
+				}
+				DEBUG("Received ByeBye for Device: %s\n", d_event->DeviceId);
+				CtrlPointRemoveDevice(d_event->DeviceId);
+				DEBUG("After byebye:\n");
+#if __DEBUG__
+				CtrlPointPrintList();
+#endif
+				break;
 			}
 			/* SOAP Stuff */
 		case UPNP_CONTROL_ACTION_COMPLETE: 
@@ -214,7 +227,7 @@ int CtrlPointRemoveAll(void)
 }
 
 /********************************************************************************
- * TvCtrlPointDeleteNode
+ * CtrlPointDeleteNode
  * Description: 
  *       Delete a device node from the global device list.  Note that this
  *       function is NOT thread safe, and should be called from another
@@ -240,12 +253,12 @@ int CtrlPointDeleteNode(struct DeviceNode *node)
 			rc = UpnpUnSubscribe(ctrlpt_handle, node->device.Service[service].SID);
 			if (UPNP_E_SUCCESS == rc) 
 			{
-				    DEBUG("Unsubscribed from Tv %s EventURL with SID=%s\n",
+				    DEBUG("Unsubscribed from %s EventURL with SID=%s\n",
 				     ServiceName[service],
 				     node->device.Service[service].SID);
 			} else 
 			{
-				    DEBUG("Error unsubscribing to Tv %s EventURL -- %d\n",
+				    DEBUG("Error unsubscribing to %s EventURL -- %d\n",
 				     ServiceName[service], rc);
 			}
 		}
@@ -384,7 +397,8 @@ int CtrlPointProcessCommand(char *cmdline)
 	{
 		char * action = "SetAVTransportURI";
 		const char * argm[] = {"InstanceID", "CurrentURI", "CurrentURIMetaData"};
-		char * argm_val[] = {"0", "http://o9o6wy2tb.bkt.clouddn.com/need_for_speed.mp4", "11"};
+		//char * argm_val[] = {"0", "http://o9o6wy2tb.bkt.clouddn.com/need_for_speed.mp4", "11"};
+		char * argm_val[] = {"0", "http://192.168.199.236:56789/_57_7F_27_59_51_4F_01_30_48_96_D1_6D_66_68_20_00_2D_00_20_00_DA_6E_DA_6E_A2_7E_18_5C.mp3", "11"};
 
 		CtrlPointSendAction(SERVICE_AVTRANSPORT, arg1,  action, argm, argm_val, 3);
 	}
@@ -401,7 +415,7 @@ int CtrlPointProcessCommand(char *cmdline)
 }
 
 /********************************************************************************
- * TvCtrlPointSendAction
+ * CtrlPointSendAction
  * Description: 
  *       Send an Action request to the specified service of a device.
  * Parameters:
@@ -437,7 +451,7 @@ int CtrlPointSendAction( int service, int devnum, const char *actionname,
 						ServiceType[service], param_name[param],
 				     		param_val[param]) != UPNP_E_SUCCESS) 
 				{
-					DEBUG("ERROR: TvCtrlPointSendAction: Trying to add action param\n");
+					DEBUG("ERROR: CtrlPointSendAction: Trying to add action param\n");
 				}
 			}
 		}
@@ -462,7 +476,7 @@ int CtrlPointSendAction( int service, int devnum, const char *actionname,
 }
 
 /********************************************************************************
- * TvCtrlPointGetDevice
+ * CtrlPointGetDevice
  * Description: 
  *       Given a list number, returns the pointer to the device
  *       node at that position in the global device list.  Note
@@ -487,7 +501,7 @@ int CtrlPointGetDevice(int devnum, struct DeviceNode **devnode)
 	}
 	if (!tmpdevnode)
 	{
-		DEBUG("Error finding TvDevice number -- %d\n", devnum);
+		DEBUG("Error finding Device number -- %d\n", devnum);
 		return ERROR;
 	}
 	*devnode = tmpdevnode;
@@ -496,7 +510,7 @@ int CtrlPointGetDevice(int devnum, struct DeviceNode **devnode)
 }
 
 /********************************************************************************
- * TvCtrlPointPrintList
+ * CtrlPointPrintList
  * Description: 
  *       Print the universal device names for each device in the global device list
  * Parameters:
@@ -514,8 +528,26 @@ int CtrlPointPrintList(void)
 	tmpdevnode = GlobalDeviceList;
 	while (tmpdevnode)
 	{
-		DEBUG_PRINTF("%3d -- %s\n", ++i, tmpdevnode->device.UDN);
-		DEBUG_PRINTF("%3d -- %s\n", ++i, tmpdevnode->device.FriendlyName);
+		DEBUG_PRINTF("%3d -- %s\t\tUDN:%s\n", ++i, tmpdevnode->device.UDN, tmpdevnode->device.FriendlyName);
+#if 0 //"ls"
+		DEBUG_PRINTF("      |-- DescDocURL:%s\n", tmpdevnode->device.DescDocURL);
+		DEBUG_PRINTF("      |-- PresURL:%s\n", tmpdevnode->device.PresURL);
+		DEBUG_PRINTF("      |-- 0:ServiceId:%s\n", tmpdevnode->device.Service[0].ServiceId);
+		DEBUG_PRINTF("        |-- 0:ServiceType:%s\n", tmpdevnode->device.Service[0].ServiceType);
+		DEBUG_PRINTF("        |-- 0:EventURL:%s\n", tmpdevnode->device.Service[0].EventURL);
+		DEBUG_PRINTF("        |-- 0:ControlURL:%s\n", tmpdevnode->device.Service[0].ControlURL);
+		DEBUG_PRINTF("        |-- 0:SID:%s\n", tmpdevnode->device.Service[0].SID);
+		DEBUG_PRINTF("      |-- 1:ServiceId:%s\n", tmpdevnode->device.Service[1].ServiceId);
+		DEBUG_PRINTF("        |-- 1:ServiceType:%s\n", tmpdevnode->device.Service[1].ServiceType);
+		DEBUG_PRINTF("        |-- 1:EventURL:%s\n", tmpdevnode->device.Service[1].EventURL);
+		DEBUG_PRINTF("        |-- 1:ControlURL:%s\n", tmpdevnode->device.Service[1].ControlURL);
+		DEBUG_PRINTF("        |-- 1:SID:%s\n", tmpdevnode->device.Service[1].SID);
+		DEBUG_PRINTF("      |-- 2:ServiceId:%s\n", tmpdevnode->device.Service[2].ServiceId);
+		DEBUG_PRINTF("        |-- 2:ServiceType:%s\n", tmpdevnode->device.Service[2].ServiceType);
+		DEBUG_PRINTF("        |-- 2:EventURL:%s\n", tmpdevnode->device.Service[2].EventURL);
+		DEBUG_PRINTF("        |-- 2:ControlURL:%s\n", tmpdevnode->device.Service[2].ControlURL);
+		DEBUG_PRINTF("        |-- 2:SID:%s\n", tmpdevnode->device.Service[2].SID);
+#endif
 		tmpdevnode = tmpdevnode->next;
 	}
 	DEBUG_PRINTF("\n");
@@ -525,7 +557,7 @@ int CtrlPointPrintList(void)
 }
 
 /********************************************************************************
- * TvCtrlPointAddDevice
+ * CtrlPointAddDevice
  * Description: 
  *       If the device is not already included in the global device list,
  *       add it.  Otherwise, update its advertisement expiration timeout.
@@ -571,7 +603,7 @@ void CtrlPointAddDevice( IXML_Document *DescDoc, const char *location, int expir
 
 	if (strcmp(deviceType, DeviceType) == 0)
 	{
-		DEBUG("Found Tv device\n");
+		DEBUG("Found device\n");
 		/* Check if this device is already in the list */
 		tmpdevnode = GlobalDeviceList;
 		while (tmpdevnode)
@@ -873,4 +905,52 @@ char *SampleUtil_GetFirstElementItem(IXML_Element *element, const char *item)
 	ixmlNodeList_free(nodeList);
 
 	return ret;
+}
+
+/********************************************************************************
+ * CtrlPointRemoveDevice
+ * Description: 
+ *	Remove a device from the global device list.
+ * Parameters:
+ *	UDN -- The Unique Device Name for the device to remove
+ ********************************************************************************/
+int CtrlPointRemoveDevice(const char *UDN)
+{
+	struct DeviceNode *curdevnode;
+	struct DeviceNode *prevdevnode;
+
+	pthread_mutex_lock(&DeviceListMutex);
+
+	curdevnode = GlobalDeviceList;
+	if (!curdevnode)
+	{
+		DEBUG( "WARNING: CtrlPointRemoveDevice: Device list empty\n");
+	}
+	else
+	{
+		if (0 == strcmp(curdevnode->device.UDN, UDN))
+		{
+			GlobalDeviceList = curdevnode->next;
+			CtrlPointDeleteNode(curdevnode);
+		}
+		else 
+		{
+			prevdevnode = curdevnode;
+			curdevnode = curdevnode->next;
+			while (curdevnode)
+			{
+				if (strcmp(curdevnode->device.UDN, UDN) == 0)
+				{
+					prevdevnode->next = curdevnode->next;
+					CtrlPointDeleteNode(curdevnode);
+					break;
+				}
+				prevdevnode = curdevnode;
+				curdevnode = curdevnode->next;
+			}
+		}
+	}
+	pthread_mutex_unlock(&DeviceListMutex);
+
+	return SUCCESS;
 }

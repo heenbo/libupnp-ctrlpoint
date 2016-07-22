@@ -68,6 +68,7 @@ extern int SampleUtil_FindAndParseService(IXML_Document *DescDoc, const char *lo
 	const char *serviceType, char **serviceId, char **eventURL, char **controlURL);
 extern IXML_NodeList *SampleUtil_GetFirstServiceList(IXML_Document *doc);
 extern char *SampleUtil_GetFirstElementItem(IXML_Element *element, const char *item);
+extern int CtrlPointRemoveDevice(const char *UDN);
 
 
 #endif //__CTRLPOINTSTART_H_
