@@ -220,6 +220,20 @@ int CtrlPointCallbackEventHandler(Upnp_EventType EventType, void *Event, void *C
 		case UPNP_EVENT_AUTORENEWAL_FAILED:
 		case UPNP_EVENT_SUBSCRIPTION_EXPIRED: 
 			{
+				struct Upnp_Event_Subscribe *es_event = (struct Upnp_Event_Subscribe *)Event;
+				int TimeOut = default_timeout;
+				Upnp_SID newSID;
+				int ret;
+				ret = UpnpSubscribe(ctrlpt_handle, es_event->PublisherUrl, &TimeOut, newSID);
+				if (ret == UPNP_E_SUCCESS)
+				{
+					DEBUG("Subscribed to EventURL with SID=%s\n", newSID);
+					CtrlPointHandleSubscribeUpdate(es_event->PublisherUrl, newSID, TimeOut);
+				}
+				else
+				{
+					DEBUG("Error Subscribing to EventURL -- %d\n", ret);
+				}
 				DEBUG("autorenewal failed, sub expired\n");
 			}
 			break;
@@ -505,7 +519,6 @@ int CtrlPointSendAction( int service, int devnum, const char *actionname,
 	DEBUG("rc: %d \n", rc);
 	if (SUCCESS == rc) 
 	{
-		DEBUG("param_count: %d ServiceType[service]: %s\n", param_count, ServiceType[service]);
 		if (0 == param_count) 
 		{
 			actionNode = UpnpMakeAction(actionname, ServiceType[service], 0, NULL);
@@ -522,6 +535,14 @@ int CtrlPointSendAction( int service, int devnum, const char *actionname,
 				}
 			}
 		}
+		DEBUG("ServiceType[service].ControlURL: %s\n", devnode->device.Service[service].ControlURL);
+		DEBUG("param_count: %d ServiceType[service]: %s\n", param_count, ServiceType[service]);
+		char *xmlbuff = NULL;
+		xmlbuff = ixmlPrintNode((IXML_Node *)actionNode);
+		DEBUG("xmlbuff =  %s\n", xmlbuff);
+		ixmlFreeDOMString(xmlbuff);
+		xmlbuff = NULL;
+
 
 		rc = UpnpSendActionAsync(ctrlpt_handle, devnode->device.Service[service].ControlURL,
 						ServiceType[service], NULL, actionNode,
