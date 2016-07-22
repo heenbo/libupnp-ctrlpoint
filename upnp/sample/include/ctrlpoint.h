@@ -13,23 +13,24 @@
 /* This should be the maximum VARCOUNT from above */
 #define MAXVARS		AVTRANSPORT_VARCOUNT
 #define MAX_VAL_LEN 5
+#define _NAME_SIZE	(NAME_SIZE*2)
 
 struct service
 {
-    char ServiceId[NAME_SIZE];
-    char ServiceType[NAME_SIZE];
+    char ServiceId[_NAME_SIZE];
+    char ServiceType[_NAME_SIZE];
     char *VariableStrVal[MAXVARS];
-    char EventURL[NAME_SIZE];
-    char ControlURL[NAME_SIZE];
-    char SID[NAME_SIZE];
+    char EventURL[_NAME_SIZE];
+    char ControlURL[_NAME_SIZE];
+    char SID[_NAME_SIZE];
 };
 
 struct Device 
 {
-    char UDN[NAME_SIZE];
-    char DescDocURL[NAME_SIZE];
-    char FriendlyName[NAME_SIZE];
-    char PresURL[NAME_SIZE];
+    char UDN[_NAME_SIZE];
+    char DescDocURL[_NAME_SIZE];
+    char FriendlyName[_NAME_SIZE];
+    char PresURL[_NAME_SIZE];
     int  AdvrTimeOut;
     struct service Service[SERVICE_SERVCOUNT];
 };
@@ -69,6 +70,10 @@ extern int SampleUtil_FindAndParseService(IXML_Document *DescDoc, const char *lo
 extern IXML_NodeList *SampleUtil_GetFirstServiceList(IXML_Document *doc);
 extern char *SampleUtil_GetFirstElementItem(IXML_Element *element, const char *item);
 extern int CtrlPointRemoveDevice(const char *UDN);
+extern void CtrlPointHandleSubscribeUpdate( const char *eventURL, const Upnp_SID sid, int timeout);
+extern void CtrlPointHandleEvent( const char *sid, int evntkey, IXML_Document *changes);
+extern void StateUpdate(char *UDN, int Service, IXML_Document *ChangedVariables, char **State);
+extern char *SampleUtil_GetElementValue(IXML_Element *element);
 
 
 #endif //__CTRLPOINTSTART_H_

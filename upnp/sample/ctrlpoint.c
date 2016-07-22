@@ -21,7 +21,7 @@
 #endif
 
 const char DeviceType[] = "urn:schemas-upnp-org:device:MediaRenderer:1";
-const char *ServiceName[] = { "AVTransport", "ConnectionManager:1", "RenderingControl"};
+const char *ServiceName[] = { "AVTransport", "ConnectionManager", "RenderingControl"};
 /*! Service types for tv services. */
 const char *ServiceType[] = 
 {
@@ -132,8 +132,8 @@ int CtrlPointCallbackEventHandler(Upnp_EventType EventType, void *Event, void *C
 #if __DEBUG__
 				CtrlPointPrintList();
 #endif
-				break;
 			}
+			break;
 		case UPNP_DISCOVERY_SEARCH_TIMEOUT:
 			{
 				DEBUG("search_timeout\n");
@@ -155,38 +155,81 @@ int CtrlPointCallbackEventHandler(Upnp_EventType EventType, void *Event, void *C
 #if __DEBUG__
 				CtrlPointPrintList();
 #endif
-				break;
 			}
+			break;
 			/* SOAP Stuff */
 		case UPNP_CONTROL_ACTION_COMPLETE: 
 			{
+				struct Upnp_Action_Complete *a_event = (struct Upnp_Action_Complete *)Event;
+//				if (a_event->ErrCode != UPNP_E_SUCCESS)
+				{
+					DEBUG_PRINTF("Error in  Action Complete Callback -- %d\n",
+							a_event->ErrCode);
+				}
+				/* No need for any processing here, just print out results.
+				 * Service state table updates are handled by events. */
 				DEBUG("action complete\n");
 			}
+			break;
 		case UPNP_CONTROL_GET_VAR_COMPLETE: 
 			{
 				DEBUG("get var complete\n");
 			}
+			break;
 			/* GENA Stuff */
 		case UPNP_EVENT_RECEIVED: 
 			{
 				DEBUG("received\n");
+				struct Upnp_Event *e_event = (struct Upnp_Event *)Event;
+				char *xmlbuff = NULL;
+
+				DEBUG("SID         =  %s\n", e_event->Sid);
+				DEBUG("EventKey    =  %d\n",	e_event->EventKey);
+				xmlbuff = ixmlPrintNode((IXML_Node *)e_event->ChangedVariables);
+				DEBUG("ChangedVars =  %s\n", xmlbuff);
+				ixmlFreeDOMString(xmlbuff);
+				xmlbuff = NULL;				
+#if 0
+				struct Upnp_Event *e_event = (struct Upnp_Event *)Event;
+
+				DEBUG("Sid:%s EventKey:%d ", e_event->Sid, e_event->EventKey,
+                                                e_event->ChangedVariables);
+				CtrlPointHandleEvent( e_event->Sid, e_event->EventKey,
+						e_event->ChangedVariables);	
+#endif
 			}
+			break;
 		case UPNP_EVENT_SUBSCRIBE_COMPLETE:
 		case UPNP_EVENT_UNSUBSCRIBE_COMPLETE:
 		case UPNP_EVENT_RENEWAL_COMPLETE: 
 			{
 				DEBUG("sub complete, unsub complete, renewal complete\n");
+				struct Upnp_Event_Subscribe *es_event = (struct Upnp_Event_Subscribe *)Event;
+
+				if (es_event->ErrCode != UPNP_E_SUCCESS) {
+					DEBUG_PRINTF("Error in Event Subscribe Callback -- %d\n",
+							es_event->ErrCode);
+				}
+				else
+				{
+					CtrlPointHandleSubscribeUpdate( es_event->PublisherUrl,
+							es_event->Sid, es_event->TimeOut);
+				}
 			}
+			break;
 		case UPNP_EVENT_AUTORENEWAL_FAILED:
 		case UPNP_EVENT_SUBSCRIPTION_EXPIRED: 
 			{
 				DEBUG("autorenewal failed, sub expired\n");
 			}
+			break;
 			/* ignore these cases, since this is not a device */
 		case UPNP_EVENT_SUBSCRIPTION_REQUEST:
 		case UPNP_CONTROL_GET_VAR_REQUEST:
 		case UPNP_CONTROL_ACTION_REQUEST:
+			{
 				DEBUG("event sub req, control get var req, control action req\n");
+			}
 			break;	
 
 	}
@@ -383,22 +426,44 @@ int CtrlPointProcessCommand(char *cmdline)
 	
 	if(0 == strcmp(cmd, "play"))
 	{
-		CtrlPointSendAction(SERVICE_AVTRANSPORT, arg1,  "Play", NULL,        NULL, 0);
+		char * action = "Play";
+		const char * argm[] = {"InstanceID", "Speed"};
+		char * argm_val[] = {"0", "1"}; 
+		CtrlPointSendAction(SERVICE_AVTRANSPORT, arg1,  action, argm, argm_val, 2);
 	}
+	else if(0 == strcmp(cmd, "next"))
+	{
+		char * action = "Next";
+		const char * argm[] = {"InstanceID"};
+		char * argm_val[] = {"0"}; 
+		CtrlPointSendAction(SERVICE_AVTRANSPORT, arg1,  action, argm, argm_val, 1);
+	}
+	else if(0 == strcmp(cmd, "get"))
+        {
+                char * action = "GetCurrentConnectionInfo";
+                const char * argm[] = {"ConnectionID"};
+                char * argm_val[] = {"0"};
+                CtrlPointSendAction(SERVICE_CONNECTIONMANAGER, arg1,  action, argm, argm_val, 1);
+        }
 	else if(0 == strcmp(cmd, "pause"))
 	{
-		CtrlPointSendAction(SERVICE_AVTRANSPORT, arg1,  "Pause", NULL,        NULL, 0);
+		char * action = "Pause";
+		const char * argm[] = {"InstanceID"};
+		char * argm_val[] = {"0"}; 
+		CtrlPointSendAction(SERVICE_AVTRANSPORT, arg1,  action, argm, argm_val, 1);
 	}
 	else if(0 == strcmp(cmd, "stop"))
 	{
-		CtrlPointSendAction(SERVICE_AVTRANSPORT, arg1,  "Stop", NULL,        NULL, 0);
+		char * action = "Stop";
+		const char * argm[] = {"InstanceID"};
+		char * argm_val[] = {"0"}; 
+		CtrlPointSendAction(SERVICE_AVTRANSPORT, arg1,  action, argm, argm_val, 1);
 	}
 	else if(0 == strcmp(cmd, "send"))
 	{
 		char * action = "SetAVTransportURI";
 		const char * argm[] = {"InstanceID", "CurrentURI", "CurrentURIMetaData"};
-		//char * argm_val[] = {"0", "http://o9o6wy2tb.bkt.clouddn.com/need_for_speed.mp4", "11"};
-		char * argm_val[] = {"0", "http://192.168.199.236:56789/_57_7F_27_59_51_4F_01_30_48_96_D1_6D_66_68_20_00_2D_00_20_00_DA_6E_DA_6E_A2_7E_18_5C.mp3", "11"};
+		char * argm_val[] = {"0", "http://o9o6wy2tb.bkt.clouddn.com/need_for_speed.mp4", "Metadata"};
 
 		CtrlPointSendAction(SERVICE_AVTRANSPORT, arg1,  action, argm, argm_val, 3);
 	}
@@ -437,8 +502,10 @@ int CtrlPointSendAction( int service, int devnum, const char *actionname,
 	pthread_mutex_lock(&DeviceListMutex);
 
 	rc = CtrlPointGetDevice(devnum, &devnode);
+	DEBUG("rc: %d \n", rc);
 	if (SUCCESS == rc) 
 	{
+		DEBUG("param_count: %d ServiceType[service]: %s\n", param_count, ServiceType[service]);
 		if (0 == param_count) 
 		{
 			actionNode = UpnpMakeAction(actionname, ServiceType[service], 0, NULL);
@@ -953,4 +1020,146 @@ int CtrlPointRemoveDevice(const char *UDN)
 	pthread_mutex_unlock(&DeviceListMutex);
 
 	return SUCCESS;
+}
+
+/********************************************************************************
+ * CtrlPointHandleSubscribeUpdate
+ * Description: 
+ *       Handle a UPnP subscription update that was received.  Find the 
+ *       service the update belongs to, and update its subscription
+ *       timeout.
+ * Parameters:
+ *   eventURL -- The event URL for the subscription
+ *   sid -- The subscription id for the subscription
+ *   timeout  -- The new timeout for the subscription
+ ********************************************************************************/
+void CtrlPointHandleSubscribeUpdate( const char *eventURL, const Upnp_SID sid, int timeout)
+{
+	struct DeviceNode *tmpdevnode;
+	int service;
+
+	pthread_mutex_lock(&DeviceListMutex);
+
+	tmpdevnode = GlobalDeviceList;
+	while (tmpdevnode)
+	{
+		for (service = 0; service < SERVICE_SERVCOUNT; service++)
+		{
+			if (strcmp (tmpdevnode->device.Service[service].EventURL, eventURL) == 0)
+			{
+				    DEBUG("Received Tv %s Event Renewal for eventURL %s\n",
+				     ServiceName[service], eventURL);
+				strcpy(tmpdevnode->device.Service[service].SID, sid);
+				break;
+			}
+		}
+		tmpdevnode = tmpdevnode->next;
+	}
+	pthread_mutex_unlock(&DeviceListMutex);
+
+	return;
+}
+
+/********************************************************************************
+ * CtrlPointHandleEvent
+ * Description: 
+ *       Handle a UPnP event that was received.  Process the event and update
+ *       the appropriate service state table.
+ * Parameters:
+ *   sid -- The subscription id for the event
+ *   eventkey -- The eventkey number for the event
+ *   changes -- The DOM document representing the changes
+ ********************************************************************************/
+void CtrlPointHandleEvent( const char *sid, int evntkey, IXML_Document *changes)
+{
+	struct DeviceNode *tmpdevnode;
+	int service;
+
+	pthread_mutex_lock(&DeviceListMutex);
+	tmpdevnode = GlobalDeviceList;
+	while (tmpdevnode)
+	{
+		for (service = 0; service < SERVICE_SERVCOUNT; ++service)
+		{
+			if (strcmp(tmpdevnode->device.Service[service].SID, sid) ==  0)
+			{
+				DEBUG("Received  %s Event: %d for SID %s\n", ServiceName[service],
+						evntkey, sid);
+//				StateUpdate( tmpdevnode->device.UDN, service, changes,
+//					(char **)&tmpdevnode->device.Service[service].VariableStrVal);
+				break;
+			}
+		}
+		tmpdevnode = tmpdevnode->next;
+	}
+	pthread_mutex_unlock(&DeviceListMutex);
+}
+
+void StateUpdate(char *UDN, int Service, IXML_Document *ChangedVariables, char **State)
+{
+	IXML_NodeList *properties;
+	IXML_NodeList *variables;
+	IXML_Element *property;
+	IXML_Element *variable;
+	long unsigned int length;
+	long unsigned int length1;
+	long unsigned int i;
+	int j;
+	char *tmpstate = NULL;
+
+	DEBUG("State Update (service %d):\n", Service);
+	/* Find all of the e:property tags in the document */
+	properties = ixmlDocument_getElementsByTagName(ChangedVariables, "e:property");
+	if (properties)
+	{
+		length = ixmlNodeList_length(properties);
+		for (i = 0; i < length; i++)
+		{
+			/* Loop through each property change found */
+			property = (IXML_Element *)ixmlNodeList_item( properties, i);
+			/* For each variable name in the state table,
+			 * check if this is a corresponding property change */
+			for (j = 0; j < VarCount[Service]; j++)
+			{
+				variables = ixmlElement_getElementsByTagName(
+						property, VarName[Service][j]);
+				/* If a match is found, extract 
+				 * the value, and update the state table */
+				if (variables)
+				{
+					length1 = ixmlNodeList_length(variables);
+					if (length1)
+					{
+						variable = (IXML_Element *)
+							ixmlNodeList_item(variables, 0);
+						tmpstate = SampleUtil_GetElementValue(variable);
+						if (tmpstate)
+						{
+							strcpy(State[j], tmpstate);
+							DEBUG( " Variable Name: %s New Value:'%s'\n",
+								VarName[Service][j], State[j]);
+						}
+						if (tmpstate)
+							free(tmpstate);
+						tmpstate = NULL;
+					}
+					ixmlNodeList_free(variables);
+					variables = NULL;
+				}
+			}
+		}
+		ixmlNodeList_free(properties);
+	}
+	return;
+}
+
+char *SampleUtil_GetElementValue(IXML_Element *element)
+{
+	IXML_Node *child = ixmlNode_getFirstChild((IXML_Node *)element);
+	char *temp = NULL;
+
+	if (child != 0 && ixmlNode_getNodeType(child) == eTEXT_NODE)
+		temp = strdup(ixmlNode_getNodeValue(child));
+
+	return temp;
 }
