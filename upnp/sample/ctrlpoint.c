@@ -436,7 +436,8 @@ int CtrlPointProcessCommand(char *cmdline)
 {
 	char cmd[100];
 	int arg1 = 0;
-	sscanf(cmdline, "%s %d", cmd, &arg1);	
+	int arg2 = 0;
+	sscanf(cmdline, "%s %d %d", cmd, &arg1, &arg2);	
 	
 	if(0 == strcmp(cmd, "play"))
 	{
@@ -454,10 +455,11 @@ int CtrlPointProcessCommand(char *cmdline)
 	}
 	else if(0 == strcmp(cmd, "get"))
         {
-                char * action = "GetCurrentConnectionInfo";
+//                char * action = "GetCurrentConnectionInfo";
+                char * action = "GetMediaInfo";
                 const char * argm[] = {"ConnectionID"};
                 char * argm_val[] = {"0"};
-                CtrlPointSendAction(SERVICE_CONNECTIONMANAGER, arg1,  action, argm, argm_val, 1);
+                CtrlPointSendAction(SERVICE_AVTRANSPORT, arg1,  action, argm, argm_val, 1);
         }
 	else if(0 == strcmp(cmd, "pause"))
 	{
@@ -475,11 +477,78 @@ int CtrlPointProcessCommand(char *cmdline)
 	}
 	else if(0 == strcmp(cmd, "send"))
 	{
+		char * url[] =
+		{
+			//1-5
+			"http://o9o6wy2tb.bkt.clouddn.com/1469171509543.jpg",
+			"http://o9o6wy2tb.bkt.clouddn.com/yang.mp3",
+			"http://o9o6wy2tb.bkt.clouddn.com/DmC.wmv",
+			"http://o9o6wy2tb.bkt.clouddn.com/need_for_speed.mp4",
+			"http://o9o6wy2tb.bkt.clouddn.com/bamiaozhuzhang.mp4",
+
+			//6-10
+			"http://192.168.199.242:8200/MediaItems/23.mp4",
+			"http://192.168.199.242:8200/MediaItems/1.mp4",
+			"http://192.168.199.242/music/1.mp3",
+			"http://192.168.199.110/video/gs/guitusaipao.mp3",
+			"http://192.168.199.236/Resident Evil 6 reveal trailer - YouTube.MP4",
+
+			//11-15
+			"http://192.168.199.110/video/gs/01youziyin.rmvb",
+			"http://192.168.199.110/video/gs/1.mp4",
+			"http://192.168.199.110/video/gs/sc_13505843926hd.flv",
+			"http://192.168.199.110/video/gs/yamiaozhuzhang.rm",
+			"http://192.168.199.110/video/gs/01youziyin.rmvb",
+
+			//16-20
+			"http://192.168.199.236/story/tangshigushi/01youziyin.rmvb",
+			"http://192.168.199.236/story/bamiaozhuzhang.rm",
+			"http://192.168.199.236/sc_13505843926hd.flv",
+			"http://192.168.199.236/meirenyu.mp4",
+			"http://o9o6wy2tb.bkt.clouddn.com/1469171550112.jpg",
+		
+			//21-25
+			"http://192.168.199.110/video/gs/1.jpg",
+			"http://192.168.199.110/video/gs/2.jpg",
+			"http://192.168.199.110/video/gs/aduwu.mp4",
+			"http://192.168.199.110/video/gs/aizikanxi.mp4",
+			"http://192.168.199.110/video/gs/bamiaozhuzhang.mp4",
+		
+			//26-30
+			"smb://ubuntu/www/video",
+			
+		};
+		char * action = "SetAVTransportURI";
+		const char * argm[] = {"InstanceID", "CurrentURI", "CurrentURIMetaData"};
+		char * argm_val[] = {"0", url[arg2-1], "Metadata"};
+
+		CtrlPointSendAction(SERVICE_AVTRANSPORT, arg1,  action, argm, argm_val, 3);
+	}
+	else if(0 == strcmp(cmd, "send1"))
+	{
 		char * action = "SetAVTransportURI";
 		const char * argm[] = {"InstanceID", "CurrentURI", "CurrentURIMetaData"};
 		char * argm_val[] = {"0", "http://o9o6wy2tb.bkt.clouddn.com/need_for_speed.mp4", "Metadata"};
 
 		CtrlPointSendAction(SERVICE_AVTRANSPORT, arg1,  action, argm, argm_val, 3);
+	}
+	else if(0 == strcmp(cmd, "prev"))
+	{
+		char * action = "Previous";
+		const char * argm[] = {"InstanceID"};
+		char * argm_val[] = {"0"};
+
+		CtrlPointSendAction(SERVICE_AVTRANSPORT, arg1,  action, argm, argm_val, 1);
+	}
+	else if(0 == strcmp(cmd, "vol"))
+	{
+		char buf[8] = {0};
+		char * action = "SetVolume";
+		const char * argm[] = {"InstanceID", "Channel", "DesiredVolume"};
+		sprintf(buf, "%d", arg2);
+		char * argm_val[] = {"0", "2", buf};
+
+		CtrlPointSendAction(SERVICE_RENDERINGCONTROL, arg1,  action, argm, argm_val, 3);
 	}
 	else if(0 == strcmp(cmd, "ls"))
 	{
@@ -616,7 +685,8 @@ int CtrlPointPrintList(void)
 	tmpdevnode = GlobalDeviceList;
 	while (tmpdevnode)
 	{
-		DEBUG_PRINTF("%3d -- %s\t\tUDN:%s\n", ++i, tmpdevnode->device.UDN, tmpdevnode->device.FriendlyName);
+		DEBUG_PRINTF("%3d -- %s\t\tfriendlyName:%s\n", ++i, tmpdevnode->device.UDN, tmpdevnode->device.FriendlyName);
+		DEBUG_PRINTF("      |-- DescDocURL:%s\n", tmpdevnode->device.DescDocURL);
 #if 0 //"ls"
 		DEBUG_PRINTF("      |-- DescDocURL:%s\n", tmpdevnode->device.DescDocURL);
 		DEBUG_PRINTF("      |-- PresURL:%s\n", tmpdevnode->device.PresURL);
@@ -683,13 +753,14 @@ void CtrlPointAddDevice( IXML_Document *DescDoc, const char *location, int expir
 	baseURL = SampleUtil_GetFirstDocumentItem(DescDoc, "URLBase");
 	relURL = SampleUtil_GetFirstDocumentItem(DescDoc, "presentationURL");
 
-	ret = UpnpResolveURL((baseURL ? baseURL : location), relURL, presURL);
+	//ret = UpnpResolveURL((baseURL ? baseURL : location), relURL, presURL);
+	ret = UpnpResolveURL(location, relURL, presURL);
 	if (UPNP_E_SUCCESS != ret)
 	{
 		DEBUG("Error generating presURL from %s + %s\n", baseURL, relURL);
 	}
 
-	if (strcmp(deviceType, DeviceType) == 0)
+	if ((strcmp(deviceType, DeviceType) == 0) && (NULL == strcasestr(friendlyName, "pc")))
 	{
 		DEBUG("Found device\n");
 		/* Check if this device is already in the list */
@@ -852,10 +923,11 @@ char *SampleUtil_GetFirstDocumentItem(IXML_Document *doc, const char *item)
 			DEBUG("%s(%d): ixmlNodeList_item(nodeList, 0) returned NULL\n",
 					__FILE__, __LINE__);
 		}
-	} else
-		DEBUG("%s(%d): Error finding %s in XML Node\n",
-			__FILE__, __LINE__, item);
-
+	}
+	else
+	{
+//		DEBUG("%s(%d): Error finding %s in XML Node\n", __FILE__, __LINE__, item);
+	}
 epilogue:
 	if (nodeList)
 	{
